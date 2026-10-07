@@ -10,7 +10,8 @@ import { getImageFromDrive, updatePhoto, uploadFile } from './gdrive.js'
 
 
 const app = express()
-const port = 3000
+const port = process.env.PORTI || 3000
+const imageBaseUrl = process.env.IMAGE_BASE_URL || 'https://contratogt.com/api/image/'
 
 
 app.use(express.json())
@@ -545,7 +546,7 @@ app.post('/api/trabajaoanterior', apiKeyAuth, async (req, res) => {
     const respuesta = await uploadFile(randoms + '.' + parts[1], imagen)
 
 
-    const result = await insertartrabant(dpitrabajador, titulo, estado, 'https://contratogt.com/api/image/' + respuesta)
+    const result = await insertartrabant(dpitrabajador, titulo, estado, imageBaseUrl + respuesta)
     res.status(200).json({ Succes: 'Trabajo anterior se inserto' })
   } catch (error) {
   }
@@ -657,7 +658,7 @@ app.post('/api/threads/createPost', apiKeyAuth, async (req, res) => {
       const parts = postImage.split(/[;/]+/);
       const randoms = Math.floor(Math.random() * (14 - 1 + 1)) + 1;
       const respuesta = await uploadFile(randoms + '.' + parts[1], postImage);
-      imageUrl = 'https://contratogt.com/api/image/' + respuesta;
+      imageUrl = imageBaseUrl + respuesta;
     }
 
     // Crear nuevo threadpost, incluyendo imageUrl solo si hay una imagen
@@ -1069,7 +1070,7 @@ app.post('/api/users', apiKeyAuth, async (req, res) => {
 
 
 
-    const result = await insertUser(dpi, name, lastnames, password, email, phoneNumber, role, departamento, municipio, 'https://contratogt.com/api/image/'+imagens, 'https://contratogt.com/api/image/'+banner)
+    const result = await insertUser(dpi, name, lastnames, password, email, phoneNumber, role, departamento, municipio, imageBaseUrl+imagens, imageBaseUrl+banner)
     res.status(200).json({ Succes: 'User inserted' })
   } catch (error) {
     res.status(500).json({ error: 'Internal Server Error' })
