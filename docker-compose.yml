@@ -1,17 +1,132 @@
-# SonarQube Community Build + PostgreSQL para el Laboratorio DAST
-# Uso: docker compose up -d   →   http://localhost:9000  (admin / admin)
-# Ver guias/PASO_1_LEVANTAR_SONARQUBE.md
+# Stack local completo de ContratoGT + SonarQube. Todo se levanta y configura con:
+#
+#   docker compose up -d --build
+#
+#   Frontend   http://localhost:8100
+#   API        http://localhost:3001/api
+#   Neo4j      http://localhost:7474   (neo4j / contratogt_local)
+#   SonarQube  http://localhost:9000   (admin / SONAR_ADMIN_PASSWORD, por defecto SonarLocal123!)
+#
+# Las API keys y el token de SonarQube se generan solos (volumen "keys").
+# Analizar el código con SonarQube:  docker compose run --rm scanner
+
+x-sonar-admin-password: &sonar-admin-password ${SONAR_ADMIN_PASSWORD:-SonarLocal123!}
 
 services:
+  # ---------- Configuración automática ----------
+  keys:
+    image: alpine:3
+    volumes:
+      - keys:/keys
+      - ./docker/generate-keys.sh:/generate-keys.sh:ro
+    command: ["sh", "/generate-keys.sh"]
+
+  sonar-setup:
+    image: curlimages/curl
+    user: "0"
+    environment:
+      SONAR_ADMIN_PASSWORD: *sonar-admin-password
+    volumes:
+      - keys:/keys
+      - ./docker/sonar-setup.sh:/sonar-setup.sh:ro
+    entrypoint: ["sh", "/sonar-setup.sh"]
+    depends_on:
+      - sonarqube
+
+  # ---------- Aplicación ----------
+  app-db:
+    image: postgres:16.3
+    environment:
+      POSTGRES_DB: contratogt
+      POSTGRES_USER: contratogt
+      POSTGRES_PASSWORD: contratogt_local
+    ports:
+      - "5433:5432"
+    volumes:
+      - ./Scrum/Working/src/controller/local/init:/docker-entrypoint-initdb.d:ro
+      - app_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contratogt -d contratogt"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  neo4j:
+    image: neo4j:5
+    environment:
+      NEO4J_AUTH: neo4j/contratogt_local
+      NEO4J_PLUGINS: '["apoc"]'
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "cypher-shell -u neo4j -p contratogt_local 'RETURN 1'"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 30s
+
+  # Carga los datos de prueba en Neo4j (idempotente: usa MERGE) y termina.
+  neo4j-seed:
+    image: neo4j:5
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    volumes:
+      - ./Scrum/Working/src/controller/local/seed.cypher:/seed.cypher:ro
+    entrypoint: ["cypher-shell", "-a", "neo4j://neo4j:7687", "-u", "neo4j", "-p", "contratogt_local", "-f", "/seed.cypher"]
+
+  api:
+    build: ./Scrum/Working/src/controller
+    # Carga API_KEY y ADMIN_API_KEY generadas por el servicio "keys"
+    command: ["sh", "-c", "set -a && . /keys/app.env && set +a && exec node main.js"]
+    environment:
+      POSTGRES_DB: contratogt
+      POSTGRES_USER: contratogt
+      POSTGRES_PASSWORD: contratogt_local
+      HOST: app-db
+      PORT: 5432
+      PORTI: 3001
+      NEO4J_URI: neo4j://neo4j:7687
+      NEO4J_USER: neo4j
+      NEO4J_PASSWORD: contratogt_local
+      LOCAL_UPLOADS_DIR: /app/uploads
+      IMAGE_BASE_URL: http://localhost:3001/api/image/
+    ports:
+      - "3001:3001"
+    volumes:
+      - keys:/keys:ro
+      - api_uploads:/app/uploads
+    depends_on:
+      keys:
+        condition: service_completed_successfully
+      app-db:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+
+  frontend:
+    build: ./Scrum/Working
+    ports:
+      - "8100:80"
+    volumes:
+      - keys:/keys:ro
+    depends_on:
+      keys:
+        condition: service_completed_successfully
+      api:
+        condition: service_started
+
+  # ---------- SonarQube ----------
   sonarqube:
     image: sonarqube:community
-    hostname: sonarqube
-    container_name: sonarqube
     depends_on:
-      db:
+      sonar-db:
         condition: service_healthy
     environment:
-      SONAR_JDBC_URL: jdbc:postgresql://db:5432/sonar
+      SONAR_JDBC_URL: jdbc:postgresql://sonar-db:5432/sonar
       SONAR_JDBC_USERNAME: sonar
       SONAR_JDBC_PASSWORD: sonar
     volumes:
@@ -21,43 +136,42 @@ services:
       - sonarqube_temp:/opt/sonarqube/temp
     ports:
       - "9000:9000"
-    networks:
-      - ${NETWORK_TYPE:-ipv4}
-  db:
+
+  sonar-db:
     image: postgres:17
-    healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    hostname: postgresql
-    container_name: postgresql
     environment:
       POSTGRES_USER: sonar
       POSTGRES_PASSWORD: sonar
       POSTGRES_DB: sonar
     volumes:
       - postgresql:/var/lib/postgresql
-    networks:
-      - ${NETWORK_TYPE:-ipv4}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d sonar -U sonar"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # No corre con "up". Para analizar: docker compose run --rm scanner
+  scanner:
+    image: sonarsource/sonar-scanner-cli
+    profiles: ["scan"]
+    entrypoint: ["sh", "-c", "export SONAR_TOKEN=$$(cat /keys/sonar_token) && exec /usr/bin/entrypoint.sh sonar-scanner"]
+    environment:
+      SONAR_HOST_URL: http://sonarqube:9000
+    volumes:
+      - keys:/keys:ro
+      - ./:/usr/src
+    depends_on:
+      sonar-setup:
+        condition: service_completed_successfully
 
 volumes:
+  keys:
+  app_pgdata:
+  neo4j_data:
+  api_uploads:
   sonarqube_data:
-  sonarqube_temp:
   sonarqube_extensions:
   sonarqube_logs:
+  sonarqube_temp:
   postgresql:
-
-networks:
-  ipv4:
-    driver: bridge
-    enable_ipv6: false
-  dual:
-    driver: bridge
-    enable_ipv6: true
-    ipam:
-      config:
-        - subnet: "192.168.2.0/24"
-          gateway: "192.168.2.1"
-        - subnet: "2001:db8:2::/64"
-          gateway: "2001:db8:2::1"
