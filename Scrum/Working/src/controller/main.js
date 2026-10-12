@@ -2,7 +2,7 @@
 import express from 'express'
 import cors from 'cors'
 import { apiKeyAuth, adminapiKeyAuth } from './auth.js'
-import { insertJobToCompleted, deleteHiringFromAvailable, insertSurveyToCompletedJob, insertCommentWithId, getCommentsWithThreadID, getThreadPosts, createThreadPost, createNewChat, getUsers, getLoginUser, insertUser, gettrabajo, getUserbyDPI, setsettings, getContactsByUserDPI, getChatBetweenUsers, updatetrab, gettrabajoant, insertartrabant, insertartipotrabajo, gettrabajoSABTE, getTrabajoSABTEemple, insertChatMessage, getChatID, insertHiring, getCurrentHirings, getpasscode, updataepasscode_phone, getmail, getphone, changepass, getreport_nofecha, getreport_withfecha, getcontrataciones_por_mes, setWorkingState ,getreviewone, setnewtrabajoperfil, removenew_trabajo, chworkdescription, gettrabajos, setHiringState, getMessageID, editChatMessage } from './db.js'
+import { insertJobToCompleted, deleteHiringFromAvailable, insertSurveyToCompletedJob, insertCommentWithId, getCommentsWithThreadID, getThreadPosts, createThreadPost, createNewChat, getUsers, getLoginUser, insertUser, gettrabajo, getUserbyDPI, setsettings, getContactsByUserDPI, getChatBetweenUsers, updatetrab, gettrabajoant, insertartrabant, insertartipotrabajo, gettrabajoSABTE, getTrabajoSABTEemple, insertChatMessage, getChatID, insertHiring, getCurrentHirings, getpasscode, updataepasscode_phone, getmail, getphone, changepass, getreport_nofecha, getreport_withfecha, getcontrataciones_por_mes, setWorkingState ,getreviewone, setnewtrabajoperfil, removenew_trabajo, chworkdescription, gettrabajos, setHiringState, getMessageID, editChatMessage, getDpiByTrabajo } from './db.js'
 import { deleteRelationUserTojob, addRelationUserToJob, getJobsOfWorkerWithDPI,getWorkers, getTrustedUsersByDpi, creatNeoUser, updateNeoUser, addUserAsTrustedPerson, getAllTrabajos, insertNewJob, getWorkersByFlexibleName } from './neo.js'
 import { Admin_Exist, extendban, getbanusers, getbanusersprev, getreports, unban } from './administration.js';
 import { send_email_forfg, send_fg_password } from './fg_function.js'
@@ -210,7 +210,7 @@ app.put('/api/setsettings', apiKeyAuth, async (req, res) => {
       res.send('Inserted successfully');
     } catch (error) {
       console.error('Error inserting user:', error);
-      res.status(500).json({ error: 'Error interno del servidor' });
+      respondWithDbError(res, error)
     }
   }
 });
@@ -273,7 +273,7 @@ app.post('/api/neo/addJob', apiKeyAuth, async (req, res) => {
     const { job, description } = req.body
 
     if (!job || !description){
-      res.status(400).json({error: 'All values are required'})
+      return res.status(400).json({error: 'All values are required'})
     }
 
     const result = await insertNewJob(job, description)
@@ -456,7 +456,8 @@ app.put('/api/codechange', apiKeyAuth, async (req, res) => {
       const resp = await changepass(password, dpi)
       res.send('Updated succesfully')
     } catch (error) {
-      throw error
+      console.error('Error changing password:', error)
+      respondWithDbError(res, error)
     }
   }
 })
@@ -502,7 +503,8 @@ app.put('/api/confitrab', apiKeyAuth, async (req, res) => {
       const resp = await updatetrab(trabajo, dpi)
       res.send('Updated succesfully')
     } catch (error) {
-      throw error
+      console.error('Error updating job:', error)
+      respondWithDbError(res, error)
     }
   }
 })
@@ -559,6 +561,8 @@ app.post('/api/trabajaoanterior', apiKeyAuth, async (req, res) => {
     const result = await insertartrabant(dpitrabajador, titulo, estado, imageBaseUrl + respuesta)
     res.status(200).json({ Succes: 'Trabajo anterior se inserto' })
   } catch (error) {
+    console.error('Error inserting previous job:', error)
+    res.status(500).json({ error: 'Internal Server Error' })
   }
 })
 
@@ -569,6 +573,8 @@ app.post('/api/instipotrabajo', apiKeyAuth, async (req, res) => {
     const result = await insertartipotrabajo(nombre_trabajo, descripcion)
     res.status(200).json({ Succes: 'Trabajo anterior se inserto' })
   } catch (error) {
+    console.error('Error inserting job type:', error)
+    respondWithDbError(res, error)
   }
 })
 
@@ -988,6 +994,7 @@ app.delete('/api/removework/', apiKeyAuth ,async (req, res) => {
     const { trabajo} = req.body;
 
    await removenew_trabajo(trabajo);
+   res.status(200).json({ Success: 'Trabajo removed' })
 
   } catch (error) {
     console.error('Error post:', error);
@@ -1085,4 +1092,12 @@ app.post('/api/users', apiKeyAuth, async (req, res) => {
   } catch (error) {
     res.status(500).json({ error: 'Internal Server Error' })
   }
+})
+
+app.use((error, req, res, next) => {
+  console.error('Unhandled error:', error)
+  if (res.headersSent) {
+    return next(error)
+  }
+  res.status(500).json({ error: 'Internal Server Error' })
 })
