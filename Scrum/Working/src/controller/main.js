@@ -188,11 +188,21 @@ app.listen(port, () => {
   console.log(`Server listening at http://127.0.0.1:${port}`)
 })
 
+const respondWithDbError = (res, error) => {
+  const statusByDbCode = { '23503': 400, '23505': 409, '22001': 400 }
+  const status = statusByDbCode[error.code] || 500
+  res.status(status).json({ error: status === 500 ? 'Internal Server Error' : 'Invalid request data' })
+}
+
+const setsettingsMaxLengths = { DPI: 15, sexo: 10, fecha_nacimiento: 10, telefono: 20, role: 30, municipio: 250 }
+
 //prince
 app.put('/api/setsettings', apiKeyAuth, async (req, res) => {
   const { municipio, imagen, sexo, fecha_nacimiento, DPI, role, telefono, trabajo, banner } = req.body;
   if (!municipio || !imagen || !sexo || !fecha_nacimiento || !DPI || !role || !telefono || !trabajo || !banner) {
     res.status(400).json({ error: 'Datos incompletos en el cuerpo de la solicitud' });
+  } else if (Object.entries(setsettingsMaxLengths).some(([field, max]) => String(req.body[field]).length > max)) {
+    res.status(400).json({ error: 'Valores demasiado largos en el cuerpo de la solicitud' });
   } else {
 
     try {
