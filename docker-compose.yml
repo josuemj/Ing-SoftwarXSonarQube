@@ -94,6 +94,8 @@ services:
       NEO4J_PASSWORD: contratogt_local
       LOCAL_UPLOADS_DIR: /app/uploads
       IMAGE_BASE_URL: http://localhost:3001/api/image/
+      FRONTEND_ORIGIN: http://localhost:8100
+    restart: unless-stopped
     ports:
       - "3001:3001"
     volumes:

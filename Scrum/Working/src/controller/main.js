@@ -1,6 +1,7 @@
 
 import express from 'express'
 import cors from 'cors'
+import helmet from 'helmet'
 import { apiKeyAuth, adminapiKeyAuth } from './auth.js'
 import { insertJobToCompleted, deleteHiringFromAvailable, insertSurveyToCompletedJob, insertCommentWithId, getCommentsWithThreadID, getThreadPosts, createThreadPost, createNewChat, getUsers, getLoginUser, insertUser, gettrabajo, getUserbyDPI, setsettings, getContactsByUserDPI, getChatBetweenUsers, updatetrab, gettrabajoant, insertartrabant, insertartipotrabajo, gettrabajoSABTE, getTrabajoSABTEemple, insertChatMessage, getChatID, insertHiring, getCurrentHirings, getpasscode, updataepasscode_phone, getmail, getphone, changepass, getreport_nofecha, getreport_withfecha, getcontrataciones_por_mes, setWorkingState ,getreviewone, setnewtrabajoperfil, removenew_trabajo, chworkdescription, gettrabajos, setHiringState, getMessageID, editChatMessage, getDpiByTrabajo } from './db.js'
 import { deleteRelationUserTojob, addRelationUserToJob, getJobsOfWorkerWithDPI,getWorkers, getTrustedUsersByDpi, creatNeoUser, updateNeoUser, addUserAsTrustedPerson, getAllTrabajos, insertNewJob, getWorkersByFlexibleName } from './neo.js'
@@ -14,9 +15,16 @@ const port = process.env.PORTI || 3000
 const imageBaseUrl = process.env.IMAGE_BASE_URL || 'https://contratogt.com/api/image/'
 
 
+const allowedOrigins = (process.env.FRONTEND_ORIGIN || 'http://localhost:8100').split(',').map(origin => origin.trim())
+
+app.disable('x-powered-by')
+app.use(helmet({
+  contentSecurityPolicy: { useDefaults: false, directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"], formAction: ["'none'"], baseUri: ["'none'"] } },
+  crossOriginResourcePolicy: { policy: 'cross-origin' }
+}))
 app.use(express.json())
 app.use(cors({
-  origin: '*',
+  origin: allowedOrigins,
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
   allowedHeaders: ['Content-Type', 'api-key'],
 }))
