@@ -1,6 +1,7 @@
 import { google } from 'googleapis';
 import fs from 'fs';
 import path from 'path'
+import { randomBytes } from 'node:crypto'
 
 import stream from 'stream'
 
@@ -21,7 +22,7 @@ function saveLocalFile(fileId, picturename, basedon64) {
 
 export async function uploadFile(picturename, basedon64) {
   if (localUploadsDir) {
-    return saveLocalFile(Date.now() + '-' + Math.random().toString(36).slice(2, 8), picturename, basedon64);
+    return saveLocalFile(Date.now() + '-' + randomBytes(4).toString('hex'), picturename, basedon64);
   }
 
   // Load the service account key JSON file
