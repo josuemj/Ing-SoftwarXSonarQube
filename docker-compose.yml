@@ -194,9 +194,12 @@ services:
         set --
         if [ -n "$$NVD_API_KEY" ]; then set -- --nvdApiKey "$$NVD_API_KEY"; else unset NVD_API_KEY; fi
         exec /usr/share/dependency-check/bin/dependency-check.sh \
-          --project ContratoGT --scan /src \
-          --format JSON --format HTML --out /report \
-          --exclude "**/node_modules/.cache/**" "$$@"
+          --project ContratoGT \
+          --scan /src/package-lock.json \
+          --scan /src/Scrum/package-lock.json \
+          --scan /src/Scrum/Working/package-lock.json \
+          --scan /src/Scrum/Working/src/controller/package-lock.json \
+          --format JSON --format HTML --out /report "$$@"
     volumes:
       - ./:/src:ro
       - ./reports:/report
