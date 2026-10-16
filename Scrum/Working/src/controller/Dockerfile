@@ -6,8 +6,8 @@ WORKDIR /app
 COPY package*.json ./
 # Install exactly what the lockfile pins, without dev dependencies
 RUN npm ci --omit=dev
-# Bundle app source
-COPY --chown=node:node . .
+# Bundle app source: solo los módulos .js del servidor (sin .env, llaves ni tests)
+COPY --chown=node:node *.js ./
 # Uploads directory must be writable by the unprivileged user
 RUN mkdir -p /app/uploads && chown node:node /app/uploads
 # Run as the non-root user shipped with the node image
