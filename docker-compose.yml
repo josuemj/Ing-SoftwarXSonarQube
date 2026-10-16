@@ -141,8 +141,8 @@ services:
       - -c
       - |
         mkdir -p /extensions/plugins
-        [ -f /extensions/plugins/sonar-dependency-check-plugin.jar ] || \
-        curl -fsSL -o /extensions/plugins/sonar-dependency-check-plugin.jar \
+        [ -f /extensions/plugins/sonar-dependency-check-plugin-5.0.0.jar ] || \
+        curl -fsSL -o /extensions/plugins/sonar-dependency-check-plugin-5.0.0.jar \
           https://github.com/dependency-check/dependency-check-sonar-plugin/releases/download/5.0.0/sonar-dependency-check-plugin-5.0.0.jar
         chown -R 1000:0 /extensions
 
