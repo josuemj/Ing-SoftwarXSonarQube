@@ -1,4 +1,4 @@
-# Stack local completo de ContratoGT + SonarQube. Todo se levanta y configura con:
+# Stack local completo de ContratoGT + SonarQube + Dependency-Check. Todo se levanta y configura con:
 #
 #   docker compose up -d --build
 #
@@ -8,7 +8,12 @@
 #   SonarQube  http://localhost:9000   (admin / SONAR_ADMIN_PASSWORD, por defecto SonarLocal123!)
 #
 # Las API keys y el token de SonarQube se generan solos (volumen "keys").
-# Analizar el código con SonarQube:  docker compose run --rm scanner
+#
+# Flujo de análisis (en este orden):
+#   1) docker compose run --rm dependency-check   -> genera ./reports/dependency-check-report.{json,html}
+#   2) docker compose run --rm scanner            -> analiza el código e importa los reportes a SonarQube
+#
+# Opcional: crear un archivo .env con NVD_API_KEY=... (acelera mucho la descarga de la base NVD)
 
 x-sonar-admin-password: &sonar-admin-password ${SONAR_ADMIN_PASSWORD:-SonarLocal123!}
 
@@ -94,6 +99,8 @@ services:
       NEO4J_PASSWORD: contratogt_local
       LOCAL_UPLOADS_DIR: /app/uploads
       IMAGE_BASE_URL: http://localhost:3001/api/image/
+      FRONTEND_ORIGIN: http://localhost:8100
+    restart: unless-stopped
     ports:
       - "3001:3001"
     volumes:
@@ -120,11 +127,32 @@ services:
         condition: service_started
 
   # ---------- SonarQube ----------
+
+  # Descarga el plugin de Dependency-Check a la carpeta de plugins de SonarQube (una sola vez) y termina.
+  # Revisa https://github.com/dependency-check/dependency-check-sonar-plugin/releases
+  # y usa la versión más reciente compatible con tu versión de SonarQube.
+  sonar-plugins:
+    image: curlimages/curl
+    user: "0"
+    volumes:
+      - sonarqube_extensions:/extensions
+    entrypoint:
+      - sh
+      - -c
+      - |
+        mkdir -p /extensions/plugins
+        [ -f /extensions/plugins/sonar-dependency-check-plugin.jar ] || \
+        curl -fsSL -o /extensions/plugins/sonar-dependency-check-plugin.jar \
+          https://github.com/dependency-check/dependency-check-sonar-plugin/releases/download/5.0.0/sonar-dependency-check-plugin-5.0.0.jar
+        chown -R 1000:0 /extensions
+
   sonarqube:
     image: sonarqube:community
     depends_on:
       sonar-db:
         condition: service_healthy
+      sonar-plugins:
+        condition: service_completed_successfully
     environment:
       SONAR_JDBC_URL: jdbc:postgresql://sonar-db:5432/sonar
       SONAR_JDBC_USERNAME: sonar
@@ -151,6 +179,44 @@ services:
       timeout: 5s
       retries: 5
 
+  # No corre con "up". Para generar el reporte de dependencias: docker compose run --rm dependency-check
+  # Escribe los reportes en ./reports (la carpeta se crea sola).
+  dependency-check:
+    image: owasp/dependency-check
+    profiles: ["scan"]
+    environment:
+      NVD_API_KEY: ${NVD_API_KEY:-}
+    # --nvdApiKey solo se pasa si hay clave (una clave vacía hace fallar la descarga de NVD)
+    entrypoint:
+      - sh
+      - -c
+      - |
+        set --
+        if [ -n "$$NVD_API_KEY" ]; then set -- --nvdApiKey "$$NVD_API_KEY"; else unset NVD_API_KEY; fi
+        exec /usr/share/dependency-check/bin/dependency-check.sh \
+          --project ContratoGT --scan /src \
+          --format JSON --format HTML --out /report \
+          --exclude "**/node_modules/.cache/**" "$$@"
+    volumes:
+      - ./:/src:ro
+      - ./reports:/report
+      - dc_data:/usr/share/dependency-check/data
+
+
+    # No corre con "up". Para análisis SAST con Semgrep: docker compose run --rm semgrep
+  # Escribe ./reports/semgrep.sarif
+  semgrep:
+    image: semgrep/semgrep
+    profiles: ["scan"]
+    working_dir: /src
+    command: >
+      semgrep scan --config p/javascript --config p/owasp-top-ten
+      --metrics=off --exclude node_modules --exclude reports
+      --sarif --output reports/semgrep.sarif .
+    volumes:
+      - ./:/src
+
+
   # No corre con "up". Para analizar: docker compose run --rm scanner
   scanner:
     image: sonarsource/sonar-scanner-cli
@@ -175,3 +241,4 @@ volumes:
   sonarqube_logs:
   sonarqube_temp:
   postgresql:
+  dc_data:
