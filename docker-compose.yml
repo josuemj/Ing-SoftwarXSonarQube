@@ -202,6 +202,21 @@ services:
       - ./reports:/report
       - dc_data:/usr/share/dependency-check/data
 
+
+    # No corre con "up". Para análisis SAST con Semgrep: docker compose run --rm semgrep
+  # Escribe ./reports/semgrep.sarif
+  semgrep:
+    image: semgrep/semgrep
+    profiles: ["scan"]
+    working_dir: /src
+    command: >
+      semgrep scan --config p/javascript --config p/owasp-top-ten
+      --metrics=off --exclude node_modules --exclude reports
+      --sarif --output reports/semgrep.sarif .
+    volumes:
+      - ./:/src
+
+
   # No corre con "up". Para analizar: docker compose run --rm scanner
   scanner:
     image: sonarsource/sonar-scanner-cli
